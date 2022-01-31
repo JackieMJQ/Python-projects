@@ -1,0 +1,3 @@
+([('insert_words',
+   '/Users/jackie/Desktop/GUI/dist/insert_words',
+   'EXECUTABLE')],)
