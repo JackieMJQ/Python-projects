@@ -1,3 +1,0 @@
-([('flappy_bird',
-   '/Users/jackie/Desktop/python_projects/Flappy_birds/dist/flappy_bird',
-   'EXECUTABLE')],)
