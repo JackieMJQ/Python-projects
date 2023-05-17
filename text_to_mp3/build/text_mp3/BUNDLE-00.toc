@@ -1,3 +1,0 @@
-([('text_mp3',
-   '/Users/jackie/Desktop/python_projects/text_to_mp3/text_to_mp3/dist/text_mp3',
-   'EXECUTABLE')],)
