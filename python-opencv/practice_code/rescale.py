@@ -17,7 +17,7 @@ def changeRes(width, height):
     capture.set(4, height)
 
 # reading videos
-capture = cv.VideoCapture('./Image_Video/IMG_9525.MOV')
+capture = cv.VideoCapture('python-opencv/Image_Video/IMG_9525.MOV')
 
 while True:
     isTrue, frame = capture.read()

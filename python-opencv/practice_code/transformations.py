@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 
-img = cv.imread('Image_Video/kobe.jpg')
+img = cv.imread('python-opencv/Image_Video/kobe.jpg')
 cv.imshow('Kobe', img)
 
 # Translation

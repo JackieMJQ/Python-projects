@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 
-img = cv.imread('Image_Video/pingpong.JPG')
+img = cv.imread('python-opencv/Image_Video/pingpong.JPG')
 cv.imshow('Kobe', img)
 
 blank = np.zeros(img.shape, dtype='uint8')

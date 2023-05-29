@@ -1,6 +1,6 @@
 import cv2 as cv
 
-img = cv.imread('Image_Video/IMG_9497.JPG')
+img = cv.imread('python-opencv/Image_Video/IMG_9497.JPG')
 cv.imshow('machine', img)
 
 # converting to grayscale
