@@ -3,7 +3,7 @@ This is the repository for my python program. There are OpenCV, Pygame, GUI and 
 
 1. **[Face Detection](https://github.com/JackieMJQ/Python-projects/tree/main/python-opencv)**--
 The Face Detection Program using OpenCV is a computer vision application that utilizes the OpenCV library to detect and recognize human faces in images.
-<img src='https://github.com/JackieMJQ/Python-projects/assets/97369797/174a166f-dc41-4f49-a0af-bf5bd37c654a' width='250'/>
+<img src='https://github.com/JackieMJQ/Python-projects/assets/97369797/174a166f-dc41-4f49-a0af-bf5bd37c654a' width='500'/>
 
 2. **[Flappy Bird](https://github.com/JackieMJQ/Python-projects/blob/main/Flappy_birds/flappy_bird.py)**--
 Flappy Bird is a game developed by pygame. You can press any button on your keyboard to control the bird, and make sure the bird won't hit the tube.
