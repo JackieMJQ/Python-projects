@@ -1,146 +1,158 @@
+# Import library
 import numpy as np
-import cv2
-import math
+import cv2 as cv
+import time
 
+# Video Capture
+cap = cv.VideoCapture('python-opencv/Image_Video/Video_Tracking.mp4')
+# cap = cv.VideoCapture('Table Tennis Ball.mp4')
+if not cap.isOpened():
+    print("Cannot open camera")
+    exit()
 
-def find_length(diff_x, diff_y):
-    return math.sqrt(diff_y ** 2 + diff_x ** 2)
+# Set up colors for bounding box and Text
+red = (0,0,255)
+blue = (255,0,0)
+green = (0,255,0)
+yellow = (0,255,255)
 
+# Setup object tracking or object detection mode
+detection_mode = 1
 
-def contours_center(c):
-    if c is not None:
-        M = cv2.moments(c)
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
-        return cX, cY
-    else:
-        return -1, -1
+# Set up max tracking frame
+max_tracking_frame  = 20
+count_tracking_frame  = 0
 
+# Set up fps
+fps = 30
+prev = 0
 
-def find_nearest_contour(point, contours, trajectories):
-    min = 100000
-    index = 0
-    correct_index = 0
+# Set up HSV
+# low_thres = (0, 0, 200)
+# high_thres = (11,100,141)
+# high_thres = (180, 50, 255)
 
-    best_fit = ()
-    # comparing to each contour point
-    i = 0
-    for c in contours:
-        for p in c:
-            x, y = p.ravel()
-            diff_x = x - point[0]
-            diff_y = y - point[1]
-            dist = find_length(diff_x, diff_y)
-            if dist < min:
-                i = index
-                min = dist
-                best_fit = (x, y)
-        index += 1
+# yellow ball
+low_thres = (11, 60,141)
+high_thres = (30,255,255)
 
-    diff_x = best_fit[0] - point[0]
-    diff_y = best_fit[1] - point[1]
-    dist = find_length(diff_x, diff_y)
+# Create function to draw bounding box and put label
+def boundingBox_putText(input_frame, box_color, index, first_point, second_point):
+    # Draw bounding box and put label
+    cv.rectangle(input_frame, first_point, second_point, box_color, 2)
+    cv.putText(input_frame,'B ' + str(index+1), first_point, cv.FONT_HERSHEY_COMPLEX_SMALL, 1, green, 1)
 
-    # the point we predicted is off
-    if dist > 400:
-        return point, contours[i]
-        # predict
-        # last_direction = tuple(map(sub, trajectories[-1], trajectories[-2]))
-        # last_direction = tuple(map(floordiv, last_direction, (2, 2)))
-        # best_fit = tuple(map(add, point, last_direction))
-    return best_fit, contours[i]
+# Create function to process hsv 
+def hsv_processing(input_frame, low_thres, high_thres):
+    # Gaussian filter
+    gauss_filter = cv.GaussianBlur(input_frame, (3,3), 0)
+    # Convert bgr to hsv
+    hsv = cv.cvtColor(gauss_filter, cv.COLOR_BGR2HSV)
+    # Binarize the img using HSV color space
+    hsv_binary = cv.inRange(hsv, low_thres, high_thres)
+    
+    return hsv_binary
 
+# Create function to process noise
+def noise_processing(input_frame):
+    # Create kernel
+    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(5,5))
+    # Remove noise
+    out = cv.morphologyEx(input_frame, cv.MORPH_OPEN, kernel, iterations=2)
+    # Fill Small Hold Noise
+    out = cv.morphologyEx(out, cv.MORPH_CLOSE, kernel, iterations=4)
+    
+    return out
 
-def draw_on_screen(frame, pts0, pts1, pts2):
-    # Draw boundaries
-    cv2.polylines(frame, [pts0], True, (255, 255, 255))
-    cv2.polylines(frame, [pts1], True, (255, 255, 255))
-    cv2.polylines(frame, [pts2], True, (0, 255, 0))
+# Create a function to find contours
+def findContours_processing(input_frame, ball_rois_list):
+    contour, hierachy = cv.findContours(input_frame, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    # detect circle
+    min_radius = 15
+    max_radius = 42
+    for index, cnt in enumerate(contour):  
+        # Find radius
+        (x,y),radius = cv.minEnclosingCircle(cnt)
+        radius = int(radius)
+        if (radius > min_radius) and (radius < max_radius):
+            ball = cv.boundingRect(cnt)
+            # Get x,y,w,h
+            first_point = (int(ball[0]), int(ball[1]))
+            second_point = (int(ball[0]+ball[2]), int(ball[1]+ball[3]))
+            # Add x,y,w,h contour to list
+            ball_rois_list.append(ball)
+            # Draw bounding box = red color and Text = green color
+            boundingBox_putText(frame, red, index, first_point, second_point)
 
+    return ball_rois_list
 
-def get_ball_coordinates(frame, previous, trajectories, points):
-    # Parameters for the difference
-    sensitivityValue = 60
+while True:
+    timeElapsed = time.time() - prev
+    if timeElapsed > 1./fps:
+        prev = time.time()
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        ball_rois_list = []
+        
+        if detection_mode == 1: # Turn on detect
+            # Process hsv color
+            hsv_work = hsv_processing(frame, low_thres, high_thres)
+            
+            # Process noise
+            noise_rmv = noise_processing(hsv_work)
+            
+            # Find contour area
+            ball_detection = findContours_processing(noise_rmv,ball_rois_list)  
+            
+            # Create multi tracker
+            multi_trackers = cv.legacy.MultiTracker_create()
+            
+            # Initialize tracker
+            for ball_roi in ball_detection:
+                multi_trackers.add(cv.legacy.TrackerCSRT_create(), frame, ball_roi)
 
-    # Convert to grayscale
-    grayImage = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    # Calcuate the difference between current and last frame
-    differenceImage = cv2.subtract(grayImage, previous)
-    # cv2.imshow('gray', grayImage)
-    # cv2.imshow('pre', previous)
-    # cv2.imshow('diff', differenceImage)
-
-    # Cycle the
-    previous = grayImage.copy()
-
-    # Blur the difference to remove noise
-    blur = cv2.GaussianBlur(differenceImage, (5, 5), cv2.BORDER_DEFAULT)
-
-    # Threshold the blured frame
-    _, thresholdImage = cv2.threshold(blur, sensitivityValue, 255, cv2.THRESH_BINARY)
-
-    # Openning on the frame
-    structuringElementSize = (7, 7)
-    structuringElement = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, structuringElementSize)
-    finalThresholdImage = cv2.morphologyEx(thresholdImage, cv2.MORPH_OPEN, structuringElement)
-
-    # Blur the opened frame
-    finalThresholdImage = cv2.GaussianBlur(finalThresholdImage, (5, 5), cv2.BORDER_DEFAULT)
-
-    # Contour Detection
-    # Contour Parameters
-    perimeterMin = 25
-    perimeterMax = 125
-
-    # instead of getting a tree of contours (ie, each contour contain a child)
-    # contours, hierarchy = cv2.findContours(finalThresholdImage, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    # we can get only top levels contours
-    contours, hierarchy = cv2.findContours(finalThresholdImage, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Sort the contours by area
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)
-
-    # Select contours with specific arc length
-    real_cnts = []
-
-    for cnt in contours:
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeterMin < perimeter < perimeterMax:
-            real_cnts.append(cnt)
-
-    ''' --------------------/ Trajectory /------------------ '''
-
-    # The ball is detected
-    if len(real_cnts) > 0:
-        # Get center of first contour
-        center_x, center_y = contours_center(real_cnts[0])
-
-        # Append it to the trajectories
-        trajectories.append((center_x, center_y))
-
-        # Skip first 15 frames
-        if len(trajectories) > 15:
-            # Calculate the distance between current point and last point
-            diff_x = trajectories[-1][0] - trajectories[-2][0]
-            diff_y = trajectories[-1][1] - trajectories[-2][1]
-            dist = find_length(diff_y, diff_x)
-
-            # The current point is very far
-            if dist > 60:
-                # Remove it from the trajectories
-                trajectories.pop()
-
-                # Get the nearest contour
-                corrected_point, best_contour = find_nearest_contour(trajectories[-1], real_cnts, trajectories)
-
-                # Append the correct contour to the trajectories
-                trajectories.append(corrected_point)
-
-            return trajectories[-1], previous
-        else:
-            return None, previous
-
-    # No contours are found in the current frame
-    else:
-        return None, previous
+            # Turn off object detection and turn on object tracking
+            detection_mode = 0
+                
+        else: # Turn on tracking
+            # Set max number of tracking frame
+            if count_tracking_frame == max_tracking_frame:
+                detection_mode = 1
+                count_tracking_frame = 0
+            
+            # Update tracker
+            ret, objs = multi_trackers.update(frame)
+            if ret:
+                for index, obj in enumerate(objs):
+                    # Check the size of w and h if they are not equal, back to detection mode
+                    if((float(obj[2])/float(obj[3])) < 0.93 or (float(obj[2])/float(obj[3])) > 1.36):
+                        # print('tracking fail')
+                        detection_mode = 1
+                    else:
+                        # Get x,y,w,h
+                        first_point = (int(obj[0]), int(obj[1]))
+                        second_point = (int(obj[0]+obj[2]), int(obj[1]+obj[3]))
+                        # Draw bounding box and put label
+                        boundingBox_putText(frame, blue, index, first_point, second_point)
+                
+            else:
+                # print('tracking fail')
+                detection_mode = 1
+            
+            # Count tracking frame
+            count_tracking_frame += 1
+        
+        # Note on the corner of the screen
+        cv.putText(frame,'Blue: Tracking ', (700,20), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, blue, 1)
+        cv.putText(frame,'Red:  Detection ', (700,45), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, red, 1)
+        cv.putText(frame,f'Tracking_Frame: {max_tracking_frame}', (700,70), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, yellow, 1)
+        
+        
+        # Display the resulting frame
+        cv.imshow('Table Tennis Ball Tracking', frame)
+        if cv.waitKey(1) == ord('q'):
+            break
+        
+# When everything done, release the capture
+cap.release()
+cv.destroyAllWindows()
