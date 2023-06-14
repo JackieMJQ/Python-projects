@@ -1,158 +1,124 @@
-# Import library
+# USAGE
+# python ball_tracking.py --video ball_tracking_example.mp4
+# python ball_tracking.py
+
+# import the necessary packages
+from collections import deque
+from imutils.video import VideoStream
 import numpy as np
-import cv2 as cv
+import argparse
+import cv2
+import imutils
 import time
 
-# Video Capture
-cap = cv.VideoCapture('python-opencv/Image_Video/Video_Tracking.mp4')
-# cap = cv.VideoCapture('Table Tennis Ball.mp4')
-if not cap.isOpened():
-    print("Cannot open camera")
-    exit()
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-v", "--video",
+	help="path to the (optional) video file")
+ap.add_argument("-b", "--buffer", type=int, default=64,
+	help="max buffer size")
+args = vars(ap.parse_args())
 
-# Set up colors for bounding box and Text
-red = (0,0,255)
-blue = (255,0,0)
-green = (0,255,0)
-yellow = (0,255,255)
+# define the lower and upper boundaries of the "green"
+# ball in the HSV color space, then initialize the
+# list of tracked points
+greenLower = (29, 86, 6)
+greenUpper = (64, 255, 255)
+pts = deque(maxlen=args["buffer"])
 
-# Setup object tracking or object detection mode
-detection_mode = 1
+# if a video path was not supplied, grab the reference
+# to the webcam
+if not args.get("video", False):
+	vs = VideoStream(src=0).start()
 
-# Set up max tracking frame
-max_tracking_frame  = 20
-count_tracking_frame  = 0
+# otherwise, grab a reference to the video file
+else:
+	vs = cv2.VideoCapture(args["video"])
 
-# Set up fps
-fps = 30
-prev = 0
+# allow the camera or video file to warm up
+time.sleep(2.0)
 
-# Set up HSV
-# low_thres = (0, 0, 200)
-# high_thres = (11,100,141)
-# high_thres = (180, 50, 255)
-
-# yellow ball
-low_thres = (11, 60,141)
-high_thres = (30,255,255)
-
-# Create function to draw bounding box and put label
-def boundingBox_putText(input_frame, box_color, index, first_point, second_point):
-    # Draw bounding box and put label
-    cv.rectangle(input_frame, first_point, second_point, box_color, 2)
-    cv.putText(input_frame,'B ' + str(index+1), first_point, cv.FONT_HERSHEY_COMPLEX_SMALL, 1, green, 1)
-
-# Create function to process hsv 
-def hsv_processing(input_frame, low_thres, high_thres):
-    # Gaussian filter
-    gauss_filter = cv.GaussianBlur(input_frame, (3,3), 0)
-    # Convert bgr to hsv
-    hsv = cv.cvtColor(gauss_filter, cv.COLOR_BGR2HSV)
-    # Binarize the img using HSV color space
-    hsv_binary = cv.inRange(hsv, low_thres, high_thres)
-    
-    return hsv_binary
-
-# Create function to process noise
-def noise_processing(input_frame):
-    # Create kernel
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(5,5))
-    # Remove noise
-    out = cv.morphologyEx(input_frame, cv.MORPH_OPEN, kernel, iterations=2)
-    # Fill Small Hold Noise
-    out = cv.morphologyEx(out, cv.MORPH_CLOSE, kernel, iterations=4)
-    
-    return out
-
-# Create a function to find contours
-def findContours_processing(input_frame, ball_rois_list):
-    contour, hierachy = cv.findContours(input_frame, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    # detect circle
-    min_radius = 15
-    max_radius = 42
-    for index, cnt in enumerate(contour):  
-        # Find radius
-        (x,y),radius = cv.minEnclosingCircle(cnt)
-        radius = int(radius)
-        if (radius > min_radius) and (radius < max_radius):
-            ball = cv.boundingRect(cnt)
-            # Get x,y,w,h
-            first_point = (int(ball[0]), int(ball[1]))
-            second_point = (int(ball[0]+ball[2]), int(ball[1]+ball[3]))
-            # Add x,y,w,h contour to list
-            ball_rois_list.append(ball)
-            # Draw bounding box = red color and Text = green color
-            boundingBox_putText(frame, red, index, first_point, second_point)
-
-    return ball_rois_list
-
+# keep looping
 while True:
-    timeElapsed = time.time() - prev
-    if timeElapsed > 1./fps:
-        prev = time.time()
-        # Capture frame-by-frame
-        ret, frame = cap.read()
-        ball_rois_list = []
-        
-        if detection_mode == 1: # Turn on detect
-            # Process hsv color
-            hsv_work = hsv_processing(frame, low_thres, high_thres)
-            
-            # Process noise
-            noise_rmv = noise_processing(hsv_work)
-            
-            # Find contour area
-            ball_detection = findContours_processing(noise_rmv,ball_rois_list)  
-            
-            # Create multi tracker
-            multi_trackers = cv.legacy.MultiTracker_create()
-            
-            # Initialize tracker
-            for ball_roi in ball_detection:
-                multi_trackers.add(cv.legacy.TrackerCSRT_create(), frame, ball_roi)
+	# grab the current frame
+	frame = vs.read()
 
-            # Turn off object detection and turn on object tracking
-            detection_mode = 0
-                
-        else: # Turn on tracking
-            # Set max number of tracking frame
-            if count_tracking_frame == max_tracking_frame:
-                detection_mode = 1
-                count_tracking_frame = 0
-            
-            # Update tracker
-            ret, objs = multi_trackers.update(frame)
-            if ret:
-                for index, obj in enumerate(objs):
-                    # Check the size of w and h if they are not equal, back to detection mode
-                    if((float(obj[2])/float(obj[3])) < 0.93 or (float(obj[2])/float(obj[3])) > 1.36):
-                        # print('tracking fail')
-                        detection_mode = 1
-                    else:
-                        # Get x,y,w,h
-                        first_point = (int(obj[0]), int(obj[1]))
-                        second_point = (int(obj[0]+obj[2]), int(obj[1]+obj[3]))
-                        # Draw bounding box and put label
-                        boundingBox_putText(frame, blue, index, first_point, second_point)
-                
-            else:
-                # print('tracking fail')
-                detection_mode = 1
-            
-            # Count tracking frame
-            count_tracking_frame += 1
-        
-        # Note on the corner of the screen
-        cv.putText(frame,'Blue: Tracking ', (700,20), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, blue, 1)
-        cv.putText(frame,'Red:  Detection ', (700,45), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, red, 1)
-        cv.putText(frame,f'Tracking_Frame: {max_tracking_frame}', (700,70), cv.FONT_HERSHEY_COMPLEX_SMALL, 1, yellow, 1)
-        
-        
-        # Display the resulting frame
-        cv.imshow('Table Tennis Ball Tracking', frame)
-        if cv.waitKey(1) == ord('q'):
-            break
-        
-# When everything done, release the capture
-cap.release()
-cv.destroyAllWindows()
+	# handle the frame from VideoCapture or VideoStream
+	frame = frame[1] if args.get("video", False) else frame
+
+	# if we are viewing a video and we did not grab a frame,
+	# then we have reached the end of the video
+	if frame is None:
+		break
+
+	# resize the frame, blur it, and convert it to the HSV
+	# color space
+	frame = imutils.resize(frame, width=600)
+	blurred = cv2.GaussianBlur(frame, (11, 11), 0)
+	hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+	# construct a mask for the color "green", then perform
+	# a series of dilations and erosions to remove any small
+	# blobs left in the mask
+	mask = cv2.inRange(hsv, greenLower, greenUpper)
+	mask = cv2.erode(mask, None, iterations=2)
+	mask = cv2.dilate(mask, None, iterations=2)
+
+	# find contours in the mask and initialize the current
+	# (x, y) center of the ball
+	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
+		cv2.CHAIN_APPROX_SIMPLE)
+	cnts = imutils.grab_contours(cnts)
+	center = None
+
+	# only proceed if at least one contour was found
+	if len(cnts) > 0:
+		# find the largest contour in the mask, then use
+		# it to compute the minimum enclosing circle and
+		# centroid
+		c = max(cnts, key=cv2.contourArea)
+		((x, y), radius) = cv2.minEnclosingCircle(c)
+		M = cv2.moments(c)
+		center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+		# only proceed if the radius meets a minimum size
+		if radius > 10:
+			# draw the circle and centroid on the frame,
+			# then update the list of tracked points
+			cv2.circle(frame, (int(x), int(y)), int(radius),
+				(0, 255, 255), 2)
+			cv2.circle(frame, center, 5, (0, 0, 255), -1)
+
+	# update the points queue
+	pts.appendleft(center)
+
+	# loop over the set of tracked points
+	for i in range(1, len(pts)):
+		# if either of the tracked points are None, ignore
+		# them
+		if pts[i - 1] is None or pts[i] is None:
+			continue
+
+		# otherwise, compute the thickness of the line and
+		# draw the connecting lines
+		thickness = int(np.sqrt(args["buffer"] / float(i + 1)) * 2.5)
+		cv2.line(frame, pts[i - 1], pts[i], (0, 0, 255), thickness)
+
+	# show the frame to our screen
+	cv2.imshow("Frame", frame)
+	key = cv2.waitKey(1) & 0xFF
+
+	# if the 'q' key is pressed, stop the loop
+	if key == ord("q"):
+		break
+
+# if we are not using a video file, stop the camera video stream
+if not args.get("video", False):
+	vs.stop()
+
+# otherwise, release the camera
+else:
+	vs.release()
+
+# close all windows
+cv2.destroyAllWindows()
